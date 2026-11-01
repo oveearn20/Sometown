@@ -7,46 +7,41 @@ do
     while not workspace.CurrentCamera and tick() - _t0 < 10 do task.wait() end
 end
 
---[[ JUST HUB LITE v2 x AUTO FARM V86 — ดำ × น้ำเงินเรืองแสง
-     3 เมนู: Main (ฟาร์ม+กิน+ย้ายเซิร์ฟ) | Teleport | Settings (FPS Boost, Auto Rejoin, Anti-AFK)
+--[[ JUST HUB LITE v3 x AUTO FARM V87 — UI ใหม่ (ดำ × น้ำเงินเรืองแสง)
+     3 เมนู: หลัก | วาร์ป | ตั้งค่า
      PC: RightControl หรือ X เปิด/ปิด | Mobile: กดไอคอนลอย | เซฟค่าอัตโนมัติ (JustHubLite/AutoFarm.json)
-     V86 (แก้จาก V85):
-       - ล็อบบี้: ระบบย้ายเซิร์ฟ/รีจอยน์/ฟาร์ม/กินเสบียง/วาร์ป ไม่ทำงานในล็อบบี้ เหลือแค่ตัวเลือกเซิร์ฟคนน้อยตัวเดียว
-       - เซฟค่า: อ่านไฟล์พังไม่ล้ม มีไฟล์สำรอง (.bak) ไม่เขียนซ้ำถ้าไม่เปลี่ยน
-       - ตั้งค่าอัตโนมัติ: รอตัวละครโหลดก่อนค่อยเปิดสวิตช์ที่เซฟไว้ (ฟาร์มเริ่มเองหลังเข้าเซิร์ฟ)
-       - ฟาร์มลื่นขึ้น: แคชหาเป้าหมาย (ไม่ GetFullName/FindFirstChild ซ้ำ), แก้ปุ่มวิ่งกดซ้อน, หยุดฟาร์มแล้วปลดล็อกตัวทันที
-       - ลดเวลายืนนิ่งก่อน/หลังวาร์ป (ปรับได้ที่ IDLE_BEFORE_TP / IDLE_AFTER_TP)
-       - กันกินเสบียง/ซื้อของระหว่างกำลังย้ายเซิร์ฟ ]]
+     V87 (แก้จาก V86):
+       - UI ใหม่ทั้งหมด (โลโก้หัวเมนู, ชื่อแมพ, Dropdown นุ่ม ๆ เลื่อนดูได้, ปุ่มลอยใหญ่ขึ้น)
+       - ทุก connection ถูกเก็บและเคลียร์ตอนลบ UI (ไม่มีลูป/สัญญาณค้างสะสม)
+       - เร็วขึ้น: ลดเวลายืนนิ่ง/รอตอนวาร์ป, แคช FarmQTEGui, ลดการเช็คถี่เกินจำเป็น
+       - เสถียรขึ้น: ตายแล้วเกิดใหม่ ฟาร์มเริ่มต่อเอง, ครอบ pcall ลูปสำคัญ, กันรันซ้อน ]]
 
-local Players           = game:GetService("Players")
-local TS                = game:GetService("TweenService")
-local UIS               = game:GetService("UserInputService")
-local RS                = game:GetService("RunService")
-local HttpService       = game:GetService("HttpService")
-local Lighting          = game:GetService("Lighting")
-local Workspace         = game:GetService("Workspace")
+local Players             = game:GetService("Players")
+local TS                  = game:GetService("TweenService")
+local UIS                 = game:GetService("UserInputService")
+local RS                  = game:GetService("RunService")
+local HttpService         = game:GetService("HttpService")
+local Lighting            = game:GetService("Lighting")
+local Workspace           = game:GetService("Workspace")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TeleportService   = game:GetService("TeleportService")
-local GuiService        = game:GetService("GuiService")
-local CoreGui           = game:GetService("CoreGui")
-local VirtualUser       = game:GetService("VirtualUser")
+local ReplicatedStorage   = game:GetService("ReplicatedStorage")
+local TeleportService     = game:GetService("TeleportService")
+local GuiService          = game:GetService("GuiService")
+local CoreGui             = game:GetService("CoreGui")
+local VirtualUser         = game:GetService("VirtualUser")
 
 local lp     = Players.LocalPlayer
 local pg     = lp:WaitForChild("PlayerGui")
 local Camera = Workspace.CurrentCamera
 local G      = (getgenv and getgenv()) or _G
 
--- กล้องถูกสร้างใหม่ (เช่น หลังเกิดใหม่/วาร์ป) ให้ตามกล้องตัวล่าสุดเสมอ
-Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    if Workspace.CurrentCamera then Camera = Workspace.CurrentCamera end
-end)
-
 if pg:FindFirstChild("JustHubLite") then pg.JustHubLite:Destroy() end
 
-local LOGO    = "rbxassetid://87977664474407"
-local DISCORD = "rbxassetid://97396797065904"
-local INVITE  = "https://discord.gg/eR5kKvYEs8"
+local LOGO      = "rbxassetid://87977664474407"   -- ปุ่มลอย
+local HEAD_LOGO = "rbxassetid://88803597067423"   -- โลโก้หัวเมนู
+local DISCORD   = "rbxassetid://97396797065904"
+local INVITE    = "https://discord.gg/eR5kKvYEs8"
+local FLOAT_SIZE = 100
 
 local W, H = 480, 320
 
@@ -61,12 +56,23 @@ local C = {
     dc     = Color3.fromRGB(70, 85, 230),
 }
 
+--========== connections (เคลียร์ทั้งหมดตอนลบ UI) ==========
+local conns = {}
+local function bind(signal, fn)
+    local c = signal:Connect(fn)
+    conns[#conns + 1] = c
+    return c
+end
+
+bind(Workspace:GetPropertyChangedSignal("CurrentCamera"), function()
+    if Workspace.CurrentCamera then Camera = Workspace.CurrentCamera end
+end)
+
 --========== config save/load ==========
 local FOLDER = "JustHubLite"
 local FILE   = FOLDER .. "/AutoFarm.json"
 local CFG    = {}
 
--- อ่านไฟล์ config: ไฟล์พัง/ว่าง/ไม่ใช่ table → คืน nil (ไม่ทำให้สคริปต์ล้ม)
 local function readCfg(path)
     local ok, data = pcall(function()
         if isfile and isfile(path) then
@@ -84,23 +90,30 @@ local function saved(flag, def)
     return v
 end
 
--- เขียนไฟล์สำรองก่อน แล้วค่อยเขียนไฟล์จริง (ถ้าเครื่องดับกลางคัน ยังมีไฟล์ใดไฟล์หนึ่งที่สมบูรณ์เสมอ)
 local lastJson = nil
-local function save()
+local saveQueued = false
+local function doSave()
     pcall(function()
         if not writefile then return end
         local json = HttpService:JSONEncode(CFG)
-        if json == lastJson then return end   -- ไม่มีอะไรเปลี่ยน ไม่ต้องเขียนซ้ำ
+        if json == lastJson then return end
         if makefolder and isfolder and not isfolder(FOLDER) then makefolder(FOLDER) end
         writefile(FILE .. ".bak", json)
         writefile(FILE, json)
         lastJson = json
     end)
 end
-local inits, tinits = {}, {}   -- เรียก callback ตอนโหลดค่าที่เซฟไว้ (slider/dropdown ก่อน แล้วค่อย toggle)
+-- รวมการเซฟถี่ ๆ (เช่นลาก slider) ให้เขียนไฟล์ครั้งเดียว
+local function save()
+    if saveQueued then return end
+    saveQueued = true
+    task.delay(0.4, function()
+        saveQueued = false
+        doSave()
+    end)
+end
+local inits, tinits = {}, {}
 
--- ★ Auto Execute: ให้สคริปต์ขึ้นมาเองทุกครั้งที่วาร์ป (ถ้าเปิดสวิตช์ไว้)
--- ต้องมี queue_on_teleport และเซฟสคริปต์นี้ไว้ที่ workspace/JustHubLite.lua
 local function setupAutoExec(on)
     if not on then return end
     pcall(function()
@@ -109,7 +122,7 @@ local function setupAutoExec(on)
             warn("[JustHub] Auto Execute: ไม่พบไฟล์ workspace/JustHubLite.lua (เซฟสคริปต์ไว้ตามชื่อนี้ก่อน)")
             return
         end
-        if G.JH_QueuedJob == game.JobId then return end   -- คิวแล้วในเซิร์ฟนี้ ไม่คิวซ้ำ (กันรันซ้อน)
+        if G.JH_QueuedJob == game.JobId then return end
         G.JH_QueuedJob = game.JobId
         queue_on_teleport(
             'local function rd(p) local ok, c = pcall(function() return game:GetService("HttpService"):JSONDecode(readfile(p)) end) if ok and type(c) == "table" then return c end end\n' ..
@@ -144,19 +157,19 @@ end
 
 local function drag(handle, target, onTap)
     local dragging, start, origin, moved
-    handle.InputBegan:Connect(function(i)
+    bind(handle.InputBegan, function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             dragging, moved, start, origin = true, false, i.Position, target.Position
         end
     end)
-    UIS.InputChanged:Connect(function(i)
+    bind(UIS.InputChanged, function(i)
         if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
             local d = i.Position - start
             if d.Magnitude > 6 then moved = true end
             target.Position = UDim2.new(origin.X.Scale, origin.X.Offset + d.X, origin.Y.Scale, origin.Y.Offset + d.Y)
         end
     end)
-    UIS.InputEnded:Connect(function(i)
+    bind(UIS.InputEnded, function(i)
         if dragging and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
             dragging = false
             if not moved and onTap then onTap() end
@@ -185,13 +198,8 @@ local edgeGrad = new("UIGradient", {Color = ColorSequence.new({
 stroke(main, C.blue, 7, 0.88)
 
 local rot = 0
-local rotConn
-rotConn = RS.Heartbeat:Connect(function(dt)
-    if not gui.Parent then
-        rotConn:Disconnect()
-        return
-    end
-    if not main.Visible then return end   -- ปิด UI อยู่ ไม่ต้องหมุนขอบ
+bind(RS.Heartbeat, function(dt)
+    if not gui.Parent or not main.Visible then return end
     rot = (rot + dt * 90) % 360
     edgeGrad.Rotation = rot
 end)
@@ -204,22 +212,32 @@ local function fit()
     scale.Scale = math.clamp(math.min(v.X / (W + 40), v.Y / (H + 40)), 0.5, 1.25)
 end
 fit()
-if Workspace.CurrentCamera then Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit) end
+if Workspace.CurrentCamera then bind(Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"), fit) end
 
 --========== header ==========
 local header = new("Frame", {Size = UDim2.new(1, 0, 0, 54), BackgroundColor3 = C.white, BorderSizePixel = 0}, main)
+round(header, 18)
 grad(header, Color3.fromRGB(16, 38, 100), Color3.fromRGB(4, 8, 24), 0)
+local headerFill = new("Frame", {Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 0, 24),
+    BackgroundColor3 = C.white, BorderSizePixel = 0}, header)
+grad(headerFill, Color3.fromRGB(16, 38, 100), Color3.fromRGB(4, 8, 24), 0)
 
-local logoRing = new("Frame", {Position = UDim2.fromOffset(12, 8), Size = UDim2.fromOffset(38, 38),
-    BackgroundColor3 = C.black, BackgroundTransparency = 0.2}, header)
-round(logoRing, 19); stroke(logoRing, C.glow, 1.6, 0.1)
-new("ImageLabel", {Image = LOGO, BackgroundTransparency = 1, Size = UDim2.fromScale(0.84, 0.84),
-    Position = UDim2.fromScale(0.08, 0.08), ScaleType = Enum.ScaleType.Fit}, logoRing)
+new("ImageLabel", {Image = HEAD_LOGO, BackgroundTransparency = 1, Size = UDim2.fromOffset(40, 40),
+    Position = UDim2.fromOffset(11, 7), ScaleType = Enum.ScaleType.Fit}, header)
 
-text(header, "JUST HUB", 19, Enum.Font.GothamBlack, {Position = UDim2.fromOffset(60, 8),
-    Size = UDim2.fromOffset(160, 22), TextXAlignment = Enum.TextXAlignment.Left})
-text(header, "AUTO FARM  •  v86", 10, Enum.Font.GothamBold, {Position = UDim2.fromOffset(60, 30),
-    Size = UDim2.fromOffset(160, 12), TextXAlignment = Enum.TextXAlignment.Left, TextTransparency = 0.15})
+do
+    text(header, '<font color="rgb(80,175,255)">JUST</font> HUB', 19, Enum.Font.GothamBlack, {
+        Position = UDim2.fromOffset(60, 8), Size = UDim2.fromOffset(200, 22),
+        TextXAlignment = Enum.TextXAlignment.Left, RichText = true})
+    local sub = text(header, "ออโต้ฟาร์ม", 10, Enum.Font.GothamBold, {Position = UDim2.fromOffset(60, 30),
+        Size = UDim2.fromOffset(200, 12), TextXAlignment = Enum.TextXAlignment.Left, TextTransparency = 0.15,
+        TextTruncate = Enum.TextTruncate.AtEnd})
+    task.spawn(function()
+        local name
+        pcall(function() name = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name end)
+        if type(name) == "string" and name ~= "" then sub.Text = name end
+    end)
+end
 
 local closeBtn = new("TextButton", {Text = "X", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = C.white,
     BackgroundColor3 = C.deep, AutoButtonColor = false, AnchorPoint = Vector2.new(1, 0.5),
@@ -270,7 +288,8 @@ local function showPage(name)
     end
 end
 
-local function addTab(name)
+-- name = คีย์ภายใน (ห้ามเปลี่ยน), title = ชื่อที่แสดงบนปุ่มแท็บ
+local function addTab(name, title)
     local btn = new("TextButton", {Text = "", AutoButtonColor = false, BackgroundColor3 = C.white,
         BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36)}, side)
     round(btn, 10)
@@ -279,7 +298,7 @@ local function addTab(name)
     local bar = new("Frame", {AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 4, 0.5, 0),
         Size = UDim2.fromOffset(3, 0), BackgroundColor3 = C.white, BorderSizePixel = 0}, btn)
     round(bar, 2)
-    text(btn, name, 13, Enum.Font.GothamBold, {Position = UDim2.fromOffset(16, 0),
+    text(btn, title or name, 13, Enum.Font.GothamBold, {Position = UDim2.fromOffset(16, 0),
         Size = UDim2.new(1, -20, 1, 0), TextXAlignment = Enum.TextXAlignment.Left})
 
     local p = new("ScrollingFrame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -307,6 +326,17 @@ local function Label(page, str)
         Size = UDim2.fromOffset(3, 13), BackgroundColor3 = C.bright, BorderSizePixel = 0}, f)
     text(f, str, 12, Enum.Font.GothamBlack, {Position = UDim2.fromOffset(10, 0),
         Size = UDim2.new(1, -10, 1, 0), TextXAlignment = Enum.TextXAlignment.Left})
+end
+
+-- แถบสถานะ (รองรับหลายบรรทัด) คืนฟังก์ชันเปลี่ยนข้อความ
+local function Status(page, initial, height)
+    local f = new("Frame", {Size = UDim2.new(1, 0, 0, height or 52), BackgroundColor3 = C.white, BorderSizePixel = 0}, page)
+    round(f, 10)
+    grad(f, Color3.fromRGB(10, 22, 60), Color3.fromRGB(4, 8, 22), 90)
+    stroke(f, C.blue, 1.1, 0.6)
+    local t = text(f, initial, 11, Enum.Font.GothamMedium, {Position = UDim2.fromOffset(11, 0),
+        Size = UDim2.new(1, -22, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true})
+    return function(s) if t.Text ~= s then t.Text = s end end
 end
 
 local function Toggle(page, str, flag, default, cb)
@@ -348,6 +378,17 @@ local function Toggle(page, str, flag, default, cb)
         save()
         if cb then task.spawn(cb, state) end
     end)
+
+    return {
+        Get = function() return state end,
+        Set = function(v)
+            state = v == true
+            render(true)
+            CFG[flag] = state
+            save()
+            if cb then task.spawn(cb, state) end
+        end,
+    }
 end
 
 local function Button(page, str, cb, danger)
@@ -379,64 +420,116 @@ local function Button(page, str, cb, danger)
     end)
 end
 
--- Dropdown: กดเพื่อกางรายการ เลือกแล้วพับเก็บ
-local function Dropdown(page, str, options, flag, default, cb)
-    local cur = saved(flag, default)
-    if not table.find(options, cur) then cur = default end
+-- Dropdown แบบใหม่ (นุ่ม เลื่อนเปิดปิดสมูท เลื่อนดูได้ถ้ายาว) — options เป็น list ของชื่อ เซฟค่าลง config
+local function Dropdown(page, title, optionNames, flag, default, cb)
+    local ROW, ITEM, GAP, PAD, MAXLIST = 46, 34, 4, 6, 176
+    local options = {}
+    for _, n in ipairs(optionNames) do options[#options + 1] = {id = n, label = n} end
 
-    local holder = new("Frame", {Size = UDim2.new(1, 0, 0, 36), AutomaticSize = Enum.AutomaticSize.Y,
-        BackgroundTransparency = 1}, page)
-    new("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, holder)
+    local want = saved(flag, default)
+    local cur = options[1]
+    for _, o in ipairs(options) do if o.id == want then cur = o end end
+    CFG[flag] = cur.id
 
-    local head = new("TextButton", {Text = "", AutoButtonColor = false, BackgroundColor3 = C.white,
-        Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 1}, holder)
-    round(head, 10)
-    grad(head, Color3.fromRGB(14, 30, 74), Color3.fromRGB(5, 10, 28), 90)
-    local hs = stroke(head, C.blue, 1.1, 0.5)
-    local title = text(head, "", 12, Enum.Font.GothamBold, {Position = UDim2.fromOffset(11, 0),
-        Size = UDim2.new(1, -34, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd})
-    local arrow = text(head, "v", 12, Enum.Font.GothamBold, {AnchorPoint = Vector2.new(1, 0.5),
-        Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(14, 20)})
+    local opened = false
+    local listH, openH = 0, 0
 
-    local list = new("Frame", {Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-        BackgroundTransparency = 1, Visible = false, LayoutOrder = 2}, holder)
-    new("UIListLayout", {Padding = UDim.new(0, 4)}, list)
-    new("UIPadding", {PaddingLeft = UDim.new(0, 10)}, list)
+    local holder = new("Frame", {Size = UDim2.new(1, 0, 0, ROW), BackgroundTransparency = 1,
+        ClipsDescendants = true}, page)
 
-    local function pick(v, fire)
-        cur = v
-        title.Text = str .. ": " .. v
-        CFG[flag] = v
-        if fire and cb then task.spawn(cb, v) end
+    local row = new("TextButton", {Text = "", AutoButtonColor = false, BackgroundColor3 = C.white,
+        Size = UDim2.new(1, 0, 0, ROW)}, holder)
+    round(row, 14)
+    grad(row, Color3.fromRGB(16, 32, 78), Color3.fromRGB(8, 16, 40), 90)
+    local rs = stroke(row, C.bright, 1.2, 0.6)
+
+    text(row, title, 10, Enum.Font.GothamMedium, {Position = UDim2.fromOffset(15, 7),
+        Size = UDim2.new(1, -60, 0, 12), TextXAlignment = Enum.TextXAlignment.Left, TextTransparency = 0.45})
+    local val = text(row, cur.label, 13, Enum.Font.GothamBold, {Position = UDim2.fromOffset(15, 21),
+        Size = UDim2.new(1, -60, 0, 18), TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd})
+
+    local chip = new("Frame", {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0),
+        Size = UDim2.fromOffset(28, 28), BackgroundColor3 = C.blue, BackgroundTransparency = 0.55}, row)
+    round(chip, 14)
+    local arrow = text(chip, ">", 14, Enum.Font.GothamBold, {Size = UDim2.fromScale(1, 1), Rotation = 90})
+
+    local list = new("ScrollingFrame", {Position = UDim2.fromOffset(0, ROW + 6), Size = UDim2.new(1, 0, 0, 10),
+        BackgroundColor3 = C.white, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollBarImageColor3 = C.bright,
+        AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ClipsDescendants = true}, holder)
+    round(list, 14)
+    grad(list, Color3.fromRGB(14, 28, 68), Color3.fromRGB(7, 14, 36), 90)
+    stroke(list, C.bright, 1.1, 0.65)
+    new("UIListLayout", {Padding = UDim.new(0, GAP)}, list)
+    new("UIPadding", {PaddingTop = UDim.new(0, PAD), PaddingBottom = UDim.new(0, PAD),
+        PaddingLeft = UDim.new(0, PAD), PaddingRight = UDim.new(0, PAD)}, list)
+
+    local items = {}
+    local function paint(anim)
+        local d = anim and 0.18 or 0
+        for id, it in pairs(items) do
+            local on = (id == cur.id)
+            tw(it.btn, d, {BackgroundTransparency = on and 0.45 or 1})
+            tw(it.dot, d, {BackgroundTransparency = on and 0 or 1})
+            tw(it.lbl, d, {TextTransparency = on and 0 or 0.25})
+        end
     end
-
-    for _, opt in ipairs(options) do
-        local b = new("TextButton", {Text = "", AutoButtonColor = false, BackgroundColor3 = C.deep,
-            Size = UDim2.new(1, 0, 0, 30)}, list)
-        round(b, 8)
-        stroke(b, C.blue, 1, 0.6)
-        text(b, opt, 12, Enum.Font.GothamBold, {Position = UDim2.fromOffset(10, 0),
-            Size = UDim2.new(1, -14, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd})
+    local function close()
+        opened = false
+        tw(holder, 0.28, {Size = UDim2.new(1, 0, 0, ROW)}, Enum.EasingStyle.Quint)
+        tw(arrow, 0.28, {Rotation = 90}, Enum.EasingStyle.Quint)
+        tw(rs, 0.2, {Transparency = 0.6})
+    end
+    do
+        local n = #options
+        listH = math.min(n * ITEM + math.max(n - 1, 0) * GAP + PAD * 2, MAXLIST)
+        openH = ROW + 6 + listH
+        list.Size = UDim2.new(1, 0, 0, listH)
+    end
+    for i, o in ipairs(options) do
+        local b = new("TextButton", {Text = "", AutoButtonColor = false, BackgroundColor3 = C.blue,
+            BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, ITEM), LayoutOrder = i}, list)
+        round(b, 10)
+        local lbl = text(b, o.label, 12, Enum.Font.GothamMedium, {Position = UDim2.fromOffset(14, 0),
+            Size = UDim2.new(1, -44, 1, 0), TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd, TextTransparency = 0.25})
+        local dot = new("Frame", {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0),
+            Size = UDim2.fromOffset(8, 8), BackgroundColor3 = C.glow, BackgroundTransparency = 1}, b)
+        round(dot, 4)
+        items[o.id] = {btn = b, dot = dot, lbl = lbl}
+        b.MouseEnter:Connect(function()
+            if o.id ~= cur.id then tw(b, 0.15, {BackgroundTransparency = 0.82}) end
+        end)
+        b.MouseLeave:Connect(function()
+            if o.id ~= cur.id then tw(b, 0.15, {BackgroundTransparency = 1}) end
+        end)
         b.MouseButton1Click:Connect(function()
-            pick(opt, true)
+            local changed = (cur.id ~= o.id)
+            cur = o
+            val.Text = o.label
+            CFG[flag] = o.id
             save()
-            list.Visible = false
-            arrow.Text = "v"
+            paint(true)
+            close()
+            if changed and cb then task.spawn(cb, o.id) end
         end)
     end
+    paint(false)
 
-    head.MouseEnter:Connect(function() tw(hs, 0.15, {Transparency = 0.15}) end)
-    head.MouseLeave:Connect(function() tw(hs, 0.15, {Transparency = 0.5}) end)
-    head.MouseButton1Click:Connect(function()
-        list.Visible = not list.Visible
-        arrow.Text = list.Visible and "^" or "v"
+    row.MouseButton1Click:Connect(function()
+        if opened then close() return end
+        opened = true
+        tw(holder, 0.3, {Size = UDim2.new(1, 0, 0, openH)}, Enum.EasingStyle.Quint)
+        tw(arrow, 0.3, {Rotation = 270}, Enum.EasingStyle.Quint)
+        tw(rs, 0.2, {Transparency = 0.3})
     end)
+    row.MouseEnter:Connect(function() if not opened then tw(rs, 0.2, {Transparency = 0.4}) end end)
+    row.MouseLeave:Connect(function() if not opened then tw(rs, 0.2, {Transparency = 0.6}) end end)
 
-    pick(cur, false)
-    inits[#inits + 1] = function() if cb then cb(cur) end end
+    inits[#inits + 1] = function() if cb then cb(cur.id) end end
+    return {Get = function() return cur.id end}
 end
 
--- Slider: ลากหรือแตะที่แถบ
 local function Slider(page, str, min, max, inc, suffix, flag, default, cb)
     local val = tonumber(saved(flag, default)) or default
     local row = new("Frame", {Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = C.white, BorderSizePixel = 0}, page)
@@ -483,12 +576,12 @@ local function Slider(page, str, min, max, inc, suffix, flag, default, cb)
             update(i.Position.X)
         end
     end)
-    UIS.InputChanged:Connect(function(i)
+    bind(UIS.InputChanged, function(i)
         if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
             update(i.Position.X)
         end
     end)
-    UIS.InputEnded:Connect(function(i)
+    bind(UIS.InputEnded, function(i)
         if dragging and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
             dragging = false
             save()
@@ -496,26 +589,17 @@ local function Slider(page, str, min, max, inc, suffix, flag, default, cb)
     end)
 end
 
--- กล่องข้อความสถานะ (คืนฟังก์ชันไว้อัปเดตข้อความ)
-local function Status(page, str)
-    local f = new("Frame", {Size = UDim2.new(1, 0, 0, 52), BackgroundColor3 = C.white, BorderSizePixel = 0}, page)
-    round(f, 10)
-    grad(f, Color3.fromRGB(14, 30, 74), Color3.fromRGB(5, 10, 28), 90)
-    stroke(f, C.blue, 1.1, 0.5)
-    local t = text(f, str, 11, Enum.Font.GothamBold, {Position = UDim2.fromOffset(11, 0),
-        Size = UDim2.new(1, -22, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true})
-    return function(s) t.Text = s end
-end
-
 local function Toast(msg)
+    if not gui.Parent then return end
     local t = new("Frame", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, -60),
-        Size = UDim2.fromOffset(280, 42), BackgroundColor3 = C.white, ZIndex = 50}, gui)
+        Size = UDim2.fromOffset(300, 42), BackgroundColor3 = C.white, ZIndex = 50}, gui)
     round(t, 12)
     grad(t, Color3.fromRGB(18, 40, 100), Color3.fromRGB(4, 8, 24), 90)
     stroke(t, C.glow, 1.6, 0.1)
-    text(t, msg, 13, Enum.Font.GothamBold, {Size = UDim2.fromScale(1, 1), ZIndex = 51})
+    text(t, msg, 12, Enum.Font.GothamBold, {Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0),
+        ZIndex = 51, TextWrapped = true})
     tw(t, 0.35, {Position = UDim2.new(0.5, 0, 0, 24)}, Enum.EasingStyle.Back)
-    task.delay(2.2, function()
+    task.delay(2.4, function()
         tw(t, 0.3, {Position = UDim2.new(0.5, 0, 0, -60)})
         task.delay(0.35, function() t:Destroy() end)
     end)
@@ -538,8 +622,8 @@ end)
 
 --========== open / close + ปุ่มลอย ==========
 local float = new("ImageButton", {Image = LOGO, BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5),
-    Position = UDim2.new(0, 14, 0.5, 0), Size = UDim2.fromOffset(62, 62), Visible = false,
-    ScaleType = Enum.ScaleType.Fit, ZIndex = 100}, gui)
+    Position = UDim2.new(0, 14, 0.5, 0), Size = UDim2.fromOffset(FLOAT_SIZE, FLOAT_SIZE), Visible = false,
+    ScaleType = Enum.ScaleType.Fit, ZIndex = 100, BorderSizePixel = 0, AutoButtonColor = false}, gui)
 
 local isOpen = true
 local function setOpen(v)
@@ -552,20 +636,20 @@ local function setOpen(v)
     else
         tw(main, 0.25, {Size = UDim2.fromOffset(0, 0)}, Enum.EasingStyle.Back, Enum.EasingDirection.In)
         task.delay(0.26, function()
-            if not isOpen then
+            if not isOpen and gui.Parent then
                 main.Visible = false
                 float.Visible = true
                 float.Size = UDim2.fromOffset(0, 0)
-                tw(float, 0.35, {Size = UDim2.fromOffset(62, 62)}, Enum.EasingStyle.Back)
+                tw(float, 0.35, {Size = UDim2.fromOffset(FLOAT_SIZE, FLOAT_SIZE)}, Enum.EasingStyle.Back)
             end
         end)
     end
 end
 
 closeBtn.MouseButton1Click:Connect(function() setOpen(false) end)
-drag(float, float, function() setOpen(true) end)   -- คลิกเมาส์ (PC) หรือแตะนิ้ว (มือถือ) ที่ไอคอนลอยเพื่อเปิด
+drag(float, float, function() setOpen(true) end)
 drag(header, main)
-UIS.InputBegan:Connect(function(i, gp)
+bind(UIS.InputBegan, function(i, gp)
     if gp then return end
     if i.KeyCode == Enum.KeyCode.RightControl
         or (UIS.KeyboardEnabled and i.KeyCode == Enum.KeyCode.X) then
@@ -574,29 +658,25 @@ UIS.InputBegan:Connect(function(i, gp)
 end)
 
 --==================================================================
--- ⚙️ ระบบหลังบ้าน (Auto Farm V86)
+-- ⚙️ ระบบหลังบ้าน (Auto Farm V87)
 --==================================================================
 
 -- ═══ 0. Auto Rejoin & Lobby Hopper ═══
 local LOBBY_PLACE_ID = 112311675882346
-local currentPlaceId = game.PlaceId
-local IN_LOBBY = (currentPlaceId == LOBBY_PLACE_ID)   -- ★ อยู่ล็อบบี้: ปิดระบบย้ายเซิร์ฟ/รีจอยน์/ฟาร์ม/เสบียง ทั้งหมด เหลือแค่ตัวเลือกเซิร์ฟคนน้อย
+local IN_LOBBY = (game.PlaceId == LOBBY_PLACE_ID)
 
--- วาร์ปไปล็อบบี้เท่านั้น (ห้ามวาร์ปเข้าเซิร์ฟอื่นตรงๆ เกมจะเตะ) ถ้าวาร์ปล้มจะขึ้น Toast บอกสาเหตุ
-local lobbyFailCount = 0
 pcall(function()
-    TeleportService.TeleportInitFailed:Connect(function(plr, result, msg)
+    bind(TeleportService.TeleportInitFailed, function(plr, result, msg)
         if plr == lp then
-            lobbyFailCount = lobbyFailCount + 1
             pcall(function() Toast("วาร์ปไม่สำเร็จ: " .. tostring(result) .. " " .. tostring(msg)) end)
         end
     end)
 end)
 local function goLobby()
-    if IN_LOBBY then return end   -- อยู่ล็อบบี้แล้ว ห้ามสั่งวาร์ปซ้ำ (จะตีกับการเข้าเซิร์ฟคนน้อย)
+    if IN_LOBBY then return end
     pcall(function() TeleportService:Teleport(LOBBY_PLACE_ID, lp) end)
 end
-local isAutoRejoinEnabled = saved("AutoRejoinToggle", true) == true   -- ทำงานตลอด ยกเว้นผู้ใช้ปิดสวิตช์เอง
+local isAutoRejoinEnabled = saved("AutoRejoinToggle", true) == true
 
 local function triggerNativeButton(btn)
     if not btn then return end
@@ -612,7 +692,6 @@ local function triggerNativeButton(btn)
     end)
 end
 
--- ★ PC + Mobile: กดคีย์บอร์ดจำลอง (ใช้เฉพาะตอนไม่มีปุ่มบนจอ และเครื่องมีคีย์บอร์ด)
 local function pressKey(key, hold)
     pcall(function()
         VirtualInputManager:SendKeyEvent(true, key, false, game)
@@ -621,7 +700,6 @@ local function pressKey(key, hold)
     end)
 end
 
--- ★ ใช้ปุ่มบนจอ (ระบบมือถือ) ก่อนเสมอ ถ้าไม่มีปุ่มและเป็นเครื่องมีคีย์บอร์ด ค่อยกดคีย์บอร์ดแทน
 local function smartPress(btn, key, hold)
     if btn and btn.Parent and firesignal then
         triggerNativeButton(btn)
@@ -634,23 +712,18 @@ local function smartPress(btn, key, hold)
     return false
 end
 
--- ═══ 0.0 ตารางรีสตาร์ทเซิร์ฟของเกม ═══
--- เซิร์ฟรีสตาร์ททุก 00:00 / 06:00 / 12:00 / 18:00 (เวลาไทย UTC+7)
+-- ═══ 0.0 ตารางรีสตาร์ทเซิร์ฟ (เวลาไทย UTC+7: 00/06/12/18) ═══
 local TZ_OFFSET = 7
 local RESTART_HOURS = {0, 6, 12, 18}
-local RESTART_LEAD = 90         -- เข้าล็อบบี้ก่อนรีสตาร์ท 90 วิ (เผื่อวาร์ปช้า/ลองซ้ำ)
-local RESTART_HOLD_AFTER = 45   -- ล็อบบี้รอหลังรีสตาร์ท 45 วิ ค่อยเลือกเซิร์ฟใหม่
+local RESTART_LEAD = 90
+local RESTART_HOLD_AFTER = 45
 
--- เวลาที่เชื่อถือได้: ใช้เวลาเซิร์ฟเวอร์ Roblox
 local function nowUnix()
     local ok, t = pcall(function() return Workspace:GetServerTimeNow() end)
-    if ok and type(t) == "number" and t > 1e9 then
-        return math.floor(t)
-    end
+    if ok and type(t) == "number" and t > 1e9 then return math.floor(t) end
     return os.time()
 end
 
--- คืนค่า (วินาทีก่อนรีสตาร์ทรอบหน้า, วินาทีนับจากรีสตาร์ทรอบล่าสุด)
 local function restartTimes()
     local t = os.date("!*t", nowUnix() + TZ_OFFSET * 3600)
     local nowSec = t.hour * 3600 + t.min * 60 + t.sec
@@ -673,7 +746,6 @@ end
 
 local lobbyDiagAt = 0
 
--- สำรอง: ถ้าอ่านรายชื่อเซิร์ฟจาก ReplicatedStorage ไม่ได้ ให้อ่านจากหน้า UI เลือกเซิร์ฟแล้วกดปุ่มเล่นของเซิร์ฟที่คนน้อยสุดเอง
 local function uiFallbackJoin()
     local best, bestOnline = nil, 9999
     for _, d in ipairs(lp.PlayerGui:GetDescendants()) do
@@ -705,32 +777,21 @@ end
 
 local function runLobbyHopperLoop()
     if not IN_LOBBY then return end
-
     task.spawn(function()
         task.wait(3.0)
         while gui.Parent and IN_LOBBY do
-            if inRestartHold() then   -- ใกล้รีสตาร์ท/เพิ่งรีสตาร์ท: รอก่อน
+            if inRestartHold() then
                 task.wait(1.0)
                 continue
             end
             local serversFolder = ReplicatedStorage:FindFirstChild("Servers")
             local func = ReplicatedStorage:FindFirstChild("func")
 
-            -- บันทึกลง Developer Console (F9) ทุก 15 วิ ไว้ดูว่าเกมเปลี่ยนโครงสร้างรายชื่อเซิร์ฟไหม
-            if tick() - (lobbyDiagAt or 0) > 15 then
+            if tick() - lobbyDiagAt > 15 then
                 lobbyDiagAt = tick()
                 pcall(function()
                     print(string.format("[JH-LOBBY] Servers=%s func=%s", tostring(serversFolder ~= nil), tostring(func ~= nil)))
-                    if serversFolder then
-                        local n = 0
-                        for _, d in ipairs(serversFolder:GetDescendants()) do
-                            n = n + 1
-                            if n > 12 then break end
-                            print(string.format("[JH-LOBBY]  %s (%s) Online=%s Value=%s", d:GetFullName():gsub("^.-Servers", "Servers"),
-                                d.ClassName, tostring(d:GetAttribute("Online")),
-                                tostring(pcall(function() return d.Value end) and d.Value or ""):sub(1, 24)))
-                        end
-                    else
+                    if not serversFolder then
                         local names = {}
                         for _, c in ipairs(ReplicatedStorage:GetChildren()) do names[#names + 1] = c.Name end
                         print("[JH-LOBBY] ReplicatedStorage: " .. table.concat(names, ", "))
@@ -742,12 +803,11 @@ local function runLobbyHopperLoop()
             if serversFolder and func then
                 local bestServerName, bestToken = nil, nil
                 local lowestOnline = 9999
-
                 for _, sVal in ipairs(serversFolder:GetDescendants()) do
                     if sVal.Name:upper():find("^SERVER%s*%d+") then
                         local online = sVal:GetAttribute("Online") or 0
-                        local rawVal = tostring(sVal.Value or "")
-
+                        local okV, rawV = pcall(function() return sVal.Value end)
+                        local rawVal = tostring(okV and rawV or "")
                         if online < 49 and rawVal ~= "" then
                             local token = rawVal:match("^(%S+)")
                             if token and online < lowestOnline then
@@ -768,7 +828,6 @@ local function runLobbyHopperLoop()
                         writefile(FOLDER .. "/viaLobby.txt", tostring(os.time()))
                     end)
                     pcall(function() func:InvokeServer("teleport", bestToken) end)
-
                     pcall(function()
                         local serverlistUI = lp.PlayerGui:FindFirstChild("serverlistUI")
                         if serverlistUI then
@@ -786,11 +845,10 @@ local function runLobbyHopperLoop()
     end)
 end
 
--- ระบบตรวจจับหลุด/โดนเตะ (เปิดตั้งแต่เริ่มสคริปต์) — ★ ไม่ทำงานในล็อบบี้
 local rejoining = false
 
 local function doRejoin(reason)
-    if IN_LOBBY then return end   -- ล็อบบี้: ห้ามยุ่ง ปล่อยให้ตัวเลือกเซิร์ฟคนน้อยทำงานอย่างเดียว
+    if IN_LOBBY then return end
     if rejoining or not isAutoRejoinEnabled or not gui.Parent then return end
     rejoining = true
     task.spawn(function()
@@ -826,16 +884,13 @@ local function hasErrorMessage()
 end
 
 if not IN_LOBBY then
-    -- ทางที่ 1: ฟังสัญญาณ error จากระบบ Roblox โดยตรง
     pcall(function()
-        GuiService.ErrorMessageChanged:Connect(function()
+        bind(GuiService.ErrorMessageChanged, function()
             if hasErrorMessage() then doRejoin("ErrorMessageChanged") end
         end)
     end)
-
-    -- ทางที่ 2: ป๊อปอัปโผล่ขึ้นมาใน CoreGui
     pcall(function()
-        CoreGui.DescendantAdded:Connect(function(d)
+        bind(CoreGui.DescendantAdded, function(d)
             if d.Name == "ErrorTitle" or d.Name == "ErrorPrompt" then
                 task.delay(0.2, function()
                     if kickPromptVisible() or hasErrorMessage() then doRejoin("PromptAdded") end
@@ -843,11 +898,9 @@ if not IN_LOBBY then
             end
         end)
     end)
-
-    -- ทางที่ 3: สำรอง เช็คซ้ำทุก 0.5 วิ
     task.spawn(function()
         while gui.Parent do
-            task.wait(0.5)
+            task.wait(1.0)
             if isAutoRejoinEnabled and (hasErrorMessage() or kickPromptVisible()) then
                 doRejoin("Poll")
             end
@@ -856,7 +909,6 @@ if not IN_LOBBY then
 end
 
 if IN_LOBBY then runLobbyHopperLoop() end
-
 
 -- ═══ 0.1 ฟังก์ชันเสริม ═══
 local function triggerMobileRunButton()
@@ -918,9 +970,9 @@ local function walkAwayFromPoint(originPos, distToMove)
     root.AssemblyLinearVelocity = Vector3.zero
 end
 
--- ยืนนิ่งธรรมชาติ (ลดเวลาลงเพื่อให้ฟาร์มไวขึ้น ถ้าอยากปลอดภัยกว่าให้เพิ่มกลับเป็น 3.0)
-local IDLE_BEFORE_TP = 2.0   -- ยืนนิ่งก่อนวาร์ปทุกครั้ง
-local IDLE_AFTER_TP  = 1.5   -- ยืนนิ่งหลังถึงจุดฟาร์ม ก่อนเดินไปเก็บ
+-- ยืนนิ่ง (V87 ลดลงให้ไวขึ้น ถ้าอยากปลอดภัยกว่าให้เพิ่มกลับเป็น 2.0 / 1.5)
+local IDLE_BEFORE_TP = 1.5
+local IDLE_AFTER_TP  = 1.0
 
 local function standIdle(sec)
     local t0 = tick()
@@ -930,29 +982,28 @@ local function standIdle(sec)
         local root = char and char:FindFirstChild("HumanoidRootPart")
         if not hum or not root then break end
         hum:Move(Vector3.zero, false)
-        hum:MoveTo(root.Position)   -- ยกเลิกเป้าหมายเดินเดิมที่ค้างอยู่
+        hum:MoveTo(root.Position)
         task.wait(0.1)
     end
 end
 
--- ═══ 0.2 ระบบเช็ควิ่งอัตโนมัติ (เช็คสถานะตลอดเวลา) ═══
+-- ═══ 0.2 ระบบเช็ควิ่งอัตโนมัติ ═══
 local RUN_SETTLE = 1.5
 local RUN_FAIL_COOLDOWN = 10
-local RUN_CHECK_INTERVAL = 0.1   -- เช็คทุก 0.1 วิ
+local RUN_CHECK_INTERVAL = 0.1
 local walkSpd, runSpd = nil, nil
 local runHum, runBelief, runPending, runPressAt, runNextAt = nil, false, nil, 0, 0
 local runSpeedConn = nil
-local runBusy = false            -- กันเรียกซ้อน (ลูป + สัญญาณ WalkSpeed) ไม่ให้กดปุ่มวิ่งสองรอบแล้วสลับเป็นเดิน
+local runBusy = false
 local runStep
 
--- อัปเดตความเชื่อ "ตอนนี้วิ่งอยู่ไหม" จาก WalkSpeed ปัจจุบัน (ทำได้แม้ยืนนิ่ง)
 local function syncRunBelief(ws)
     if walkSpd and runSpd then
         local gap = runSpd - walkSpd
         if ws >= walkSpd + gap * 0.5 then
             runBelief = true
         elseif ws <= walkSpd + gap * 0.15 and ws >= walkSpd - 0.5 then
-            runBelief = false   -- ต้องใกล้ความเร็วเดินจริงๆ ถึงถือว่าไม่ได้วิ่ง (ของหนัก/บัฟทำให้ความเร็วเพี้ยน)
+            runBelief = false
         end
     end
 end
@@ -965,7 +1016,6 @@ local function runStepInner()
     if hum ~= runHum then
         runHum, runBelief, runPending, runPressAt, runNextAt = hum, false, nil, 0, 0
         if runSpeedConn then runSpeedConn:Disconnect() end
-        -- WalkSpeed เปลี่ยนเมื่อไหร่ เช็คสถานะทันที ไม่ต้องรอรอบลูป
         runSpeedConn = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
             pcall(runStep)
         end)
@@ -976,7 +1026,6 @@ local function runStepInner()
 
     local now = tick()
 
-    -- ตรวจผลหลังกดปุ่มวิ่ง (ทำตลอด ไม่ต้องรอให้ขยับ)
     if runPending then
         if now - runPressAt < 1.0 then return end
         local before = runPending
@@ -994,10 +1043,8 @@ local function runStepInner()
         return
     end
 
-    -- เช็คสถานะวิ่งจากความเร็วตลอดเวลา แม้ยืนนิ่ง (เกมอาจปิดวิ่งเองตอนหยุด/วาร์ป/เกิดใหม่)
     syncRunBelief(ws)
 
-    -- กดปุ่มวิ่งเฉพาะตอนกำลังเดินจริง
     local rootPart = char:FindFirstChild("HumanoidRootPart")
     local vel = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
     local flatVel = Vector3.new(vel.X, 0, vel.Z).Magnitude
@@ -1024,19 +1071,13 @@ task.spawn(function()
         task.wait(RUN_CHECK_INTERVAL)
         runStep()
     end
+    if runSpeedConn then runSpeedConn:Disconnect() end
 end)
 
 -- ═══ 0.3 NOCLIP ═══
--- เปิดเฉพาะตอนวาร์ป (tpUntil) | ปิดทันทีที่ลงถึง (endNoclip) โดยคืน CanCollide เฉพาะชิ้นที่สคริปต์ปิดเอง
--- busyUntil = ช่วงที่ตัวเช็คต่างๆ ห้ามยุ่ง (วาร์ปอยู่)
-local NC = { tpUntil = 0, busyUntil = 0, farm = false, hold = false, anchored = false }   -- hold = คง noclip ไว้ตอนขายของ
+local NC = { tpUntil = 0, busyUntil = 0, farm = false, hold = false, anchored = false }
 local ncChanged = {}
-local noclipConn
-noclipConn = RS.Stepped:Connect(function()
-    if not gui.Parent then
-        noclipConn:Disconnect()
-        return
-    end
+bind(RS.Stepped, function()
     if not NC.farm and not NC.hold and tick() >= NC.tpUntil then return end
     local char = lp.Character
     if not char then return end
@@ -1069,10 +1110,9 @@ local function endNoclip()
 end
 
 -- ═══ 1. วาร์ป ═══
-local TP_STEP  = 1200   -- ระยะวาร์ปต่อก้าว (studs)
-local TP_DEPTH = 40     -- ความลึกใต้ดิน
+local TP_STEP  = 1200
+local TP_DEPTH = 40
 
--- รอจนมีพื้นจริงใต้ตัว (ไม่นับแผ่นรอง/น้ำ) คืนผล raycast หรือ nil ถ้าไม่เจอในเวลาที่กำหนด
 local function waitGround(char, pad, pos, maxSec, beat)
     local rp = RaycastParams.new()
     rp.FilterType = Enum.RaycastFilterType.Exclude
@@ -1083,7 +1123,7 @@ local function waitGround(char, pad, pos, maxSec, beat)
         if beat then beat() end
         hit = Workspace:Raycast(pos + Vector3.new(0, 2, 0), Vector3.new(0, -14, 0), rp)
         if hit then break end
-        task.wait(0.1)
+        task.wait(0.08)
     until tick() - t0 > maxSec
     return hit
 end
@@ -1106,27 +1146,23 @@ local function undergroundHop(char, root, hum, targetPos, stepDistance, startPos
     root.Anchored = true
     NC.anchored = true
 
-    -- 1) ดิ่งลงใต้ดินตรงจุดที่ยืนอยู่
     placeAt(CFrame.new(startPos.X, depthY, startPos.Z))
-    task.wait(0.15)
+    task.wait(0.1)
 
-    -- 2) เลื่อนใต้ดินทีละก้าว
     for i = 1, steps - 1 do
         if not root.Parent then return end
         tpBeat()
         placeAt(CFrame.new(startPos.X + dir.X * stepDistance * i, depthY, startPos.Z + dir.Z * stepDistance * i))
-        task.wait(0.35)
+        task.wait(0.27)
     end
 
-    -- 3) ไปอยู่ใต้เป้าหมาย สั่งโหลดแมพตรงนั้น แล้วรอก่อนโผล่
     if not root.Parent then return end
     tpBeat()
     placeAt(CFrame.new(targetPos.X, depthY, targetPos.Z))
     pcall(function() lp:RequestStreamAroundAsync(targetPos, 2) end)
-    task.wait(0.4)
+    task.wait(0.3)
     if not root.Parent then return end
 
-    -- 4) โผล่ที่พิกัดเป้าหมายตรงๆ + แผ่นรองกันตก ล็อกตัวไว้จนเจอพื้นจริง
     local landCF = CFrame.new(targetPos.X, targetPos.Y, targetPos.Z)
 
     local pad = Instance.new("Part")
@@ -1141,18 +1177,17 @@ local function undergroundHop(char, root, hum, targetPos, stepDistance, startPos
 
     tpBeat()
     placeAt(landCF)
-    local hit = waitGround(char, pad, landCF.Position, 3, tpBeat)   -- ยังล็อกตัวอยู่ระหว่างรอ
+    local hit = waitGround(char, pad, landCF.Position, 3, tpBeat)
     root.Anchored = false
     NC.anchored = false
     hum:ChangeState(Enum.HumanoidStateType.Landed)
 
-    task.wait(0.6)
-    if hit and pad.Parent then pad:Destroy() end   -- เจอพื้นจริงถึงลบแผ่น ไม่เจอก็ปล่อยให้ยืนบนแผ่น
+    task.wait(0.45)
+    if hit and pad.Parent then pad:Destroy() end
     root.AssemblyLinearVelocity = Vector3.zero
-    if keepNoclip then NC.hold = true else endNoclip() end   -- keepNoclip = คง noclip ไว้ (ตอนขายของ)
+    if keepNoclip then NC.hold = true else endNoclip() end
 end
 
--- idleSec: nil = ยืนนิ่ง IDLE_BEFORE_TP วิก่อนวาร์ป | 0 = ข้าม | ตัวเลขอื่น = ยืนนิ่งตามนั้น
 local function executeHopTeleport(targetPos, stepDistance, preWait, idleSec, keepNoclip)
     local char = lp.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -1173,17 +1208,15 @@ local function executeHopTeleport(targetPos, stepDistance, preWait, idleSec, kee
         NC.anchored = false
     end)
     if keepNoclip then NC.hold = true else endNoclip() end
-    task.wait(0.15)
+    task.wait(0.1)
 end
 
--- วาร์ปขากลับ: ใช้ระบบเดียวกัน
 local function executeUndergroundReturn(targetPos, stepDistance, idleSec)
     return executeHopTeleport(targetPos, stepDistance, nil, idleSec)
 end
 
--- วาร์ปตรง (ใช้ตอนแก้ค้าง/ตกน้ำ): ล็อกตัวไว้จนเจอพื้นจริง ไม่ทะลุ
-local lastAutoTP = 0          -- เวลาวาร์ปอัตโนมัติครั้งล่าสุด (ใช้กันวาร์ปรัว)
-local TP_MARGIN  = 60         -- ระยะเผื่อเกิน maxDist ก่อนถือว่า "ไกลเกิน" (กันขอบเขตกระตุก)
+local lastAutoTP = 0
+local TP_MARGIN  = 60
 local function directTP(pos)
     lastAutoTP = tick()
     local char = lp.Character
@@ -1218,47 +1251,17 @@ local function directTP(pos)
     pcall(function() if root.Parent then root.Anchored = false end end)
     NC.anchored = false
     pcall(function() hum:ChangeState(Enum.HumanoidStateType.Landed) end)
-    task.wait(0.4)
+    task.wait(0.3)
     if hit and pad and pad.Parent then pad:Destroy() end
     endNoclip()
 end
 
--- ═══ 1.4 บอทเกม/วิ่งกลับ ═══
--- บอทเกมกำลังฟาร์มอยู่ไหม (ถ้าใช่ ห้ามวาร์ป/ห้ามยุ่ง)
+-- ═══ 1.4 บอทเกม ═══
 local function gameBotWorking()
     local qte = pg:FindFirstChild("FarmQTEGui")
     if qte and qte.Enabled then return true end
     local hum = lp.Character and lp.Character:FindFirstChild("Humanoid")
     if hum and hum.WalkSpeed == 0 then return true end
-    return false
-end
-
--- วิ่งกลับจุดฟาร์ม คืน true ถ้าถึง/บอทเริ่มทำงาน | false ถ้าไม่ถึงภายในเวลา
-local function runBackTo(pos, maxSec, stopDist)
-    local char = lp.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChild("Humanoid")
-    if not root or not hum then return false end
-    local t0 = tick()
-    local lastP, lastT = root.Position, tick()
-    while tick() - t0 < maxSec do
-        if gameBotWorking() then return true end
-        if not root.Parent or hum.Health <= 0 then return false end
-        local d = root.Position - pos
-        if Vector3.new(d.X, 0, d.Z).Magnitude <= (stopDist or 15) then
-            hum:Move(Vector3.zero, false)
-            return true
-        end
-        hum:MoveTo(pos)
-        -- ติดสิ่งกีดขวาง: ไม่ขยับ 1.5 วิ ให้กระโดด
-        if (root.Position - lastP).Magnitude > 1.5 then
-            lastP, lastT = root.Position, tick()
-        elseif tick() - lastT > 1.5 then
-            hum.Jump = true
-            lastT = tick()
-        end
-        task.wait(0.1)
-    end
     return false
 end
 
@@ -1312,15 +1315,15 @@ local GRASS_BACK = Vector3.new(0, 0, 10)
 local TELEPORT_LOCATIONS = {
     ["ตลาดขายของ"] = Vector3.new(3094.3, 20.5, 2618.7),
     ["ตลาดโลก"] = Vector3.new(2856.2, 18.4, 2112.9),
-    ["ร้านค้า (การาจกลาง)"] = Vector3.new(2955.9, 23.9, 2771.4),
+    ["ร้านค้าการาจกลาง"] = Vector3.new(2955.9, 23.9, 2771.4),
     ["ฟาร์มมะม่วง"] = Vector3.new(5359.9, 46.3, 1839.3),
     ["ฟาร์มหญ้า"] = Vector3.new(-2501.1, 73.0, -2022.5) + GRASS_BACK,
     ["ฟาร์มองุ่น"] = Vector3.new(5462.8, 45.8, -1268.4),
-    ["กล้วย"] = Vector3.new(-1146.0, 131.5, 2429.7),
+    ["ฟาร์มกล้วย"] = Vector3.new(-1146.0, 131.5, 2429.7),
     ["ฟาร์มหมู"] = Vector3.new(-575.7, 56.0, 3069.4),
     ["ฟาร์มไม้"] = Vector3.new(2465.3, 29.6, -2556.4),
     ["ฟาร์มพริก"] = Vector3.new(-645.5, 14.0, -3365.8),
-    ["ดอกไม้"] = Vector3.new(-1722.0, 128.1, 1175.0),
+    ["ฟาร์มดอกไม้"] = Vector3.new(-1722.0, 128.1, 1175.0),
 }
 local tpOptions = {}
 for name in pairs(TELEPORT_LOCATIONS) do table.insert(tpOptions, name) end
@@ -1425,7 +1428,6 @@ local function readItemCount(targetName)
     return curCount, maxCount
 end
 
--- cache สั้นๆ: หลายลูปเรียกบ่อยมาก ลดการสแกน GUI ซ้ำ แต่ยังทันต่อการเก็บของ
 local itemCache = {}
 local ITEM_TTL = 0.05
 local function getItemCount(targetName)
@@ -1439,20 +1441,20 @@ end
 
 -- ═══ 5. ข้อมูลแปลงฟาร์ม ═══
 local FARM_DATA = {
-    ["มะม่วง"] = { folderName = "Mango", pos = Vector3.new(5359.9, 46.3, 1839.3), maxDist = 300 },
-    ["หญ้า"] = { folderName = "Grassbush", pos = Vector3.new(-2501.1, 73.0, -2022.5) + GRASS_BACK, maxDist = 300 },
-    ["องุ่น"] = { folderName = "Grape", pos = Vector3.new(5462.8, 45.8, -1268.4), maxDist = 300 },
-    ["กล้วย"] = { folderName = "Banana", pos = Vector3.new(-1146.0, 131.5, 2429.7), maxDist = 300 },
-    ["หมู"] = { folderName = "Pork", pos = Vector3.new(-575.7, 56.0, 3069.4), maxDist = 300 },
-    ["ไม้"] = { folderName = "Wood", pos = Vector3.new(2465.3, 29.6, -2556.4), maxDist = 300 },
-    ["พริก"] = { folderName = "Chilli", pos = Vector3.new(-645.5, 14.0, -3365.8), maxDist = 300 },
-    ["ดอกไม้"] = { folderName = "Flower", pos = Vector3.new(-1722.0, 128.1, 1175.0), maxDist = 300 },
+    ["ฟาร์มมะม่วง"] = { folderName = "Mango", pos = Vector3.new(5359.9, 46.3, 1839.3), maxDist = 300 },
+    ["ฟาร์มหญ้า"] = { folderName = "Grassbush", pos = Vector3.new(-2501.1, 73.0, -2022.5) + GRASS_BACK, maxDist = 300 },
+    ["ฟาร์มองุ่น"] = { folderName = "Grape", pos = Vector3.new(5462.8, 45.8, -1268.4), maxDist = 300 },
+    ["ฟาร์มกล้วย"] = { folderName = "Banana", pos = Vector3.new(-1146.0, 131.5, 2429.7), maxDist = 300 },
+    ["ฟาร์มหมู"] = { folderName = "Pork", pos = Vector3.new(-575.7, 56.0, 3069.4), maxDist = 300 },
+    ["ฟาร์มไม้"] = { folderName = "Wood", pos = Vector3.new(2465.3, 29.6, -2556.4), maxDist = 300 },
+    ["ฟาร์มพริก"] = { folderName = "Chilli", pos = Vector3.new(-645.5, 14.0, -3365.8), maxDist = 300 },
+    ["ฟาร์มดอกไม้"] = { folderName = "Flower", pos = Vector3.new(-1722.0, 128.1, 1175.0), maxDist = 300 },
 }
 local farmOptions = {}
 for name in pairs(FARM_DATA) do table.insert(farmOptions, name) end
 table.sort(farmOptions)
 
-local currentFarmKey = "หญ้า"
+local currentFarmKey = "ฟาร์มหญ้า"
 local currentFarmConfig = FARM_DATA[currentFarmKey]
 
 local isSellingProcessActive = false
@@ -1477,7 +1479,7 @@ local function ensureSupermarketMenuOpen()
     Camera.CameraType = Enum.CameraType.Scriptable
     local camOffset = root.Position + Vector3.new(0, 2.5, 0) - (lookCFrame.LookVector * 4.5)
     Camera.CFrame = CFrame.lookAt(camOffset, SUPERMARKET_NPC_POS + Vector3.new(0, 1.0, 0))
-    task.wait(0.3)
+    task.wait(0.25)
 
     local screenSize = Camera.ViewportSize
     local centerX, centerY = screenSize.X / 2, screenSize.Y / 2
@@ -1504,7 +1506,7 @@ local function ensureSupermarketMenuOpen()
         if marketGui and (marketGui.Enabled or (marketGui:FindFirstChild("CanvasGroup") and marketGui.CanvasGroup.Visible)) then
             break
         end
-        task.wait(0.08)
+        task.wait(0.06)
     end
 
     pcall(function() VirtualInputManager:SendTouchEvent(centerX, centerY, 0, 0, Enum.UserInputState.End, false) end)
@@ -1529,7 +1531,7 @@ local function buyItemAtMarket(itemName, countToBuy)
     if not buyBtn then return false end
 
     triggerNativeButton(buyBtn)
-    task.wait(0.4)
+    task.wait(0.3)
 
     local amountBox = pg:FindFirstChild("AmountBox")
     local isAmountOpen = amountBox and (amountBox.Enabled or (amountBox:FindFirstChild("Amount") and amountBox.Amount.Visible))
@@ -1539,13 +1541,13 @@ local function buyItemAtMarket(itemName, countToBuy)
         if textBox then
             textBox.Text = tostring(countToBuy or 15)
             pcall(function() if firesignal then firesignal(textBox.FocusLost, true) end end)
-            task.wait(0.2)
+            task.wait(0.15)
         end
 
         local confirmBtn = amountBox:FindFirstChild("Confirm", true)
         if confirmBtn then
             triggerNativeButton(confirmBtn)
-            task.wait(0.4)
+            task.wait(0.3)
             return true
         end
     end
@@ -1559,14 +1561,22 @@ local function closeSupermarketMenu()
         local exitBtn = hdr and hdr:FindFirstChild("Exit")
         if exitBtn and exitBtn.Visible then
             triggerNativeButton(exitBtn)
-            task.wait(0.2)
+            task.wait(0.15)
         end
         ensureAllMenusClosed()
     end)
 end
 
+local function restoreCamera()
+    Camera.CameraType = Enum.CameraType.Custom
+    local h = lp.Character and lp.Character:FindFirstChild("Humanoid")
+    if h then
+        Camera.CameraSubject = h
+        h:Move(Vector3.zero, false)
+    end
+end
+
 local function executeRestockRoutine(waterCount, breadCount)
-    -- ★ ล็อบบี้ / กำลังย้ายเซิร์ฟ / กำลังรีจอยน์ → ห้ามไปซื้อเสบียง
     if IN_LOBBY or SAFE.hopping or rejoining then return end
     if isRestocking or isSellingProcessActive then return end
     isRestocking = true
@@ -1574,14 +1584,13 @@ local function executeRestockRoutine(waterCount, breadCount)
     local wasFarming = working
     if wasFarming then
         stopFarm()
-        task.wait(0.2)
+        task.wait(0.15)
     end
 
     local char = lp.Character
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then hum:Move(Vector3.zero, false) end
 
-    -- มีคนอยู่ใกล้จุดซื้อเสบียง (ในระยะ 10 studs) → ยืนรอที่เดิมก่อน
     local ready = holdStillUntilClear(
         function() return SUPERMARKET_STAND_POS end,
         nil,
@@ -1594,7 +1603,7 @@ local function executeRestockRoutine(waterCount, breadCount)
 
     executeHopTeleport(SUPERMARKET_STAND_POS, TP_STEP, 1.2, 0)
     ensureSupermarketMenuOpen()
-    task.wait(0.15)
+    task.wait(0.1)
 
     if waterCount <= 0 then
         buyItemAtMarket("Water", 15)
@@ -1607,23 +1616,15 @@ local function executeRestockRoutine(waterCount, breadCount)
 
     closeSupermarketMenu()
     task.wait(0.1)
-
-    Camera.CameraType = Enum.CameraType.Custom
-    local currentHum = lp.Character and lp.Character:FindFirstChild("Humanoid")
-    if currentHum then Camera.CameraSubject = currentHum end
+    restoreCamera()
 
     walkAwayFromPoint(SUPERMARKET_NPC_POS, 35)
 
     if currentFarmConfig and currentFarmConfig.pos then
-        executeUndergroundReturn(currentFarmConfig.pos, TP_STEP, 1.0)
+        executeUndergroundReturn(currentFarmConfig.pos, TP_STEP, 0.8)
     end
 
-    Camera.CameraType = Enum.CameraType.Custom
-    local finalHum = lp.Character and lp.Character:FindFirstChild("Humanoid")
-    if finalHum then
-        Camera.CameraSubject = finalHum
-        finalHum:Move(Vector3.zero, false)
-    end
+    restoreCamera()
     standIdle(IDLE_AFTER_TP)
 
     isRestocking = false
@@ -1683,7 +1684,6 @@ local function consumeLoop()
     while gui.Parent do
         task.wait(0.5)
 
-        -- ★ ล็อบบี้ / กำลังย้ายเซิร์ฟ / กำลังรีจอยน์ → ไม่กิน ไม่ซื้อเสบียง
         if CONSUME_SETTINGS.Enabled and not IN_LOBBY and not SAFE.hopping and not rejoining
             and not isConsumeBusy and not isRestocking and not isSellingProcessActive then
             local thirstPct = getNormalizedStatus("Thirst")
@@ -1699,28 +1699,32 @@ local function consumeLoop()
                     isRestocking = false
                     Camera.CameraType = Enum.CameraType.Custom
                 end
-                task.wait(0.8)
+                task.wait(0.6)
                 continue
             end
 
             if needWater and waterCount > 0 then
                 isConsumeBusy = true
                 task.spawn(function()
-                    while CONSUME_SETTINGS.Enabled and getNormalizedStatus("Thirst") < 99 and not isRestocking do
-                        if getItemCount("Water") <= 0 then break end
-                        consumeItem("Water")
-                        task.wait(CONSUME_SETTINGS.Cooldown)
-                    end
+                    pcall(function()
+                        while CONSUME_SETTINGS.Enabled and getNormalizedStatus("Thirst") < 99 and not isRestocking do
+                            if getItemCount("Water") <= 0 then break end
+                            consumeItem("Water")
+                            task.wait(CONSUME_SETTINGS.Cooldown)
+                        end
+                    end)
                     isConsumeBusy = false
                 end)
             elseif needBread and breadCount > 0 then
                 isConsumeBusy = true
                 task.spawn(function()
-                    while CONSUME_SETTINGS.Enabled and getNormalizedStatus("Hunger") < 99 and not isRestocking do
-                        if getItemCount("Bread") <= 0 then break end
-                        consumeItem("Bread")
-                        task.wait(CONSUME_SETTINGS.Cooldown)
-                    end
+                    pcall(function()
+                        while CONSUME_SETTINGS.Enabled and getNormalizedStatus("Hunger") < 99 and not isRestocking do
+                            if getItemCount("Bread") <= 0 then break end
+                            consumeItem("Bread")
+                            task.wait(CONSUME_SETTINGS.Cooldown)
+                        end
+                    end)
                     isConsumeBusy = false
                 end)
             end
@@ -1728,7 +1732,6 @@ local function consumeLoop()
     end
 end
 
--- ตัวคุมลูปกิน
 task.spawn(function()
     while gui.Parent do
         local ok = pcall(consumeLoop)
@@ -1756,7 +1759,7 @@ local function ensureMarketMenuOpenProven()
     Camera.CameraType = Enum.CameraType.Scriptable
     local camOffset = root.Position + Vector3.new(0, 2.5, 0) - (lookCFrame.LookVector * 4.5)
     Camera.CFrame = CFrame.lookAt(camOffset, NPC_POS + Vector3.new(0, 1.2, 0))
-    task.wait(0.2)
+    task.wait(0.15)
 
     local screenSize = Camera.ViewportSize
     local centerX, centerY = screenSize.X / 2, screenSize.Y / 2
@@ -1780,7 +1783,7 @@ local function ensureMarketMenuOpenProven()
         if economyGui and (economyGui.Enabled or (economyGui:FindFirstChild("CanvasGroup") and economyGui.CanvasGroup.Visible)) then
             break
         end
-        task.wait(0.06)
+        task.wait(0.05)
     end
 
     pcall(function() VirtualInputManager:SendTouchEvent(centerX, centerY, 0, 0, Enum.UserInputState.End, false) end)
@@ -1826,7 +1829,7 @@ local function executeSellFlowWithMaxConfirmFast(itemName)
     if not buyBtn then return false end
 
     triggerNativeButton(buyBtn)
-    task.wait(0.25)
+    task.wait(0.2)
 
     local amountBox = pg:FindFirstChild("AmountBox")
     local isAmountOpen = amountBox and (amountBox.Enabled or (amountBox:FindFirstChild("Amount") and amountBox.Amount.Visible))
@@ -1835,13 +1838,13 @@ local function executeSellFlowWithMaxConfirmFast(itemName)
         local maxBtn = amountBox:FindFirstChild("Max", true)
         if maxBtn then
             triggerNativeButton(maxBtn)
-            task.wait(0.15)
+            task.wait(0.1)
         end
 
         local confirmBtn = amountBox:FindFirstChild("Confirm", true)
         if confirmBtn then
             triggerNativeButton(confirmBtn)
-            task.wait(0.35)
+            task.wait(0.3)
             return true
         end
     end
@@ -1857,13 +1860,12 @@ local function closeMarketMenuViaExitButton()
         local exitBtn = hdr and hdr:FindFirstChild("Exit")
         if exitBtn and exitBtn.Visible then
             triggerNativeButton(exitBtn)
-            task.wait(0.2)
+            task.wait(0.15)
         end
         ensureAllMenusClosed()
     end)
 end
 
--- เรียกจากในลูปฟาร์ม (ลูปฟาร์มจะวนต่อเองหลังขายเสร็จ)
 local function fullSellRoutine(targetItemName)
     if IN_LOBBY or isSellingProcessActive or isRestocking then return end
     isSellingProcessActive = true
@@ -1872,7 +1874,6 @@ local function fullSellRoutine(targetItemName)
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then hum:Move(Vector3.zero, false) end
 
-    -- ของเต็ม: ถ้ามีคนในระยะ 10 studs ยังไม่วาร์ป ยืนรอจนคนไป (จดคนที่เจอไว้ ถ้ากลับมาฟามเจอคนเดิมจะย้ายเซิร์ฟ)
     SAFE.suspects = {}
     SAFE.armed = false
     local ready = holdStillUntilClear(
@@ -1886,9 +1887,9 @@ local function fullSellRoutine(targetItemName)
         return
     end
 
-    executeHopTeleport(STAND_POS, TP_STEP, 1.2, 0, true)   -- ขาไป: คง noclip ไว้ตลอดตอนขาย (กันตัวดีด)
+    executeHopTeleport(STAND_POS, TP_STEP, 1.2, 0, true)
     ensureMarketMenuOpenProven()
-    task.wait(0.25)
+    task.wait(0.2)
 
     local attempts = 0
     while isSellingProcessActive and attempts < 5 do
@@ -1897,33 +1898,25 @@ local function fullSellRoutine(targetItemName)
         executeSellFlowWithMaxConfirmFast(targetItemName)
 
         local startWaitCheck = tick()
-        while tick() - startWaitCheck < 0.6 do
+        while tick() - startWaitCheck < 0.5 do
             if getItemCount(targetItemName) <= 0 then break end
-            task.wait(0.08)
+            task.wait(0.06)
         end
 
         attempts = attempts + 1
-        task.wait(0.15)
+        task.wait(0.1)
     end
 
     closeMarketMenuViaExitButton()
-    task.wait(0.2)
-
-    Camera.CameraType = Enum.CameraType.Custom
-    local currentHum = lp.Character and lp.Character:FindFirstChild("Humanoid")
-    if currentHum then Camera.CameraSubject = currentHum end
+    task.wait(0.15)
+    restoreCamera()
 
     if currentFarmConfig and currentFarmConfig.pos then
-        executeUndergroundReturn(currentFarmConfig.pos, TP_STEP)   -- ขากลับ: มุดใต้ดินพร้อม noclip ถึงจุดฟาร์มแล้วปิดทันที
+        executeUndergroundReturn(currentFarmConfig.pos, TP_STEP)
     end
     endNoclip()
 
-    Camera.CameraType = Enum.CameraType.Custom
-    local finalHum = lp.Character and lp.Character:FindFirstChild("Humanoid")
-    if finalHum then
-        Camera.CameraSubject = finalHum
-        finalHum:Move(Vector3.zero, false)
-    end
+    restoreCamera()
     standIdle(IDLE_AFTER_TP)
 
     SAFE.armed = next(SAFE.suspects) ~= nil
@@ -1936,10 +1929,8 @@ G.QTE_AUTO_ENABLED = true
 local TOUCH_DIST = 2.4
 local blacklisted = {}
 
--- ★ ใช้ตัว Instance เป็นคีย์ตรงๆ (เดิม GetFullName() ทุกก้อนทุกรอบ ช้ามากเมื่อมีของเยอะ)
 local function itemKey(item) return item.obj end
 
--- ★ แคชชิ้นส่วนที่ใช้เดินไปหา (เดิม FindFirstChild แบบ recursive ทุกก้อนทุกรอบ)
 local partCache = setmetatable({}, { __mode = "k" })
 local function partOf(d)
     local p = partCache[d]
@@ -1960,11 +1951,19 @@ local function partOf(d)
     return nil
 end
 
-local function findNonImmediateTarget()
+local farmFolderCache = nil
+local function getFarmFolder()
+    if farmFolderCache and farmFolderCache.Parent and farmFolderCache.Name == currentFarmConfig.folderName then
+        return farmFolderCache
+    end
     local farm = Workspace:FindFirstChild("Farm")
-    if not farm or not currentFarmConfig then return nil end
+    farmFolderCache = farm and farm:FindFirstChild(currentFarmConfig.folderName) or nil
+    return farmFolderCache
+end
 
-    local targetFolder = farm:FindFirstChild(currentFarmConfig.folderName)
+local function findNonImmediateTarget()
+    if not currentFarmConfig then return nil end
+    local targetFolder = getFarmFolder()
     if not targetFolder then return nil end
 
     local root = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
@@ -1999,25 +1998,19 @@ end
 stopFarm = function()
     working = false
     NC.farm = false
-    if NC.hold then endNoclip() end   -- เธรดขายถูกหยุดกลางคัน ต้องคืนการชน
+    if NC.hold then endNoclip() end
     if loopThread then
-        task.cancel(loopThread)
+        pcall(task.cancel, loopThread)
         loopThread = nil
-        isSellingProcessActive = false   -- ขั้นตอนขายรันในเธรดฟาร์ม: ถ้าเธรดถูกหยุดกลางคัน ต้องล้างธงค้าง
+        isSellingProcessActive = false
     end
-    -- ★ เธรดวาร์ปถูกหยุดกลางคัน: ปลดล็อกตัว (Anchored) + คืนการชนทันที ไม่ต้องรอ watchdog
     if NC.anchored then
         NC.anchored = false
         local r = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
         if r then r.Anchored = false end
         endNoclip()
     end
-    Camera.CameraType = Enum.CameraType.Custom
-    local hum = lp.Character and lp.Character:FindFirstChild("Humanoid")
-    if hum then
-        Camera.CameraSubject = hum
-        hum:Move(Vector3.zero, false)
-    end
+    restoreCamera()
 end
 
 G.JH_StopFarm = stopFarm
@@ -2029,7 +2022,8 @@ local function walkToTriggerTarget(targetItem)
     local hum = char:FindFirstChild("Humanoid")
     if not root or not hum then return "fail" end
 
-    local beforeCount = getItemCount(currentFarmConfig.folderName)
+    local folderName = currentFarmConfig.folderName
+    local beforeCount = getItemCount(folderName)
     local reachTime = tick()
 
     while working and not isRestocking and not isSellingProcessActive do
@@ -2048,7 +2042,7 @@ local function walkToTriggerTarget(targetItem)
             local botTriggered = false
 
             while working and (tick() - startWait < 0.4) do
-                local cur = getItemCount(currentFarmConfig.folderName)
+                local cur = getItemCount(folderName)
                 if cur > beforeCount or (qteGui and qteGui.Enabled) or (hum.WalkSpeed == 0) then
                     botTriggered = true
                     break
@@ -2062,7 +2056,6 @@ local function walkToTriggerTarget(targetItem)
             return "bot_started"
         end
 
-        -- เผื่อเวลาตามระยะ (ไกลให้เวลาเดินเพิ่ม สูงสุด +3 วิ)
         if tick() - reachTime > 2.8 + math.min(flatDist / 40, 3) then return "timeout" end
         task.wait(0.03)
     end
@@ -2070,7 +2063,7 @@ local function walkToTriggerTarget(targetItem)
 end
 
 runFarm = function()
-    if IN_LOBBY then return end   -- ★ ล็อบบี้ไม่มีแปลงฟาร์ม ห้ามเริ่มฟาร์ม (ไม่งั้นจะวาร์ปหนีออกจากล็อบบี้)
+    if IN_LOBBY then return end
     stopFarm()
     task.wait(0.05)
     working = true
@@ -2078,7 +2071,7 @@ runFarm = function()
     local function farmLoop()
         while working do
             if isRestocking or isSellingProcessActive then
-                task.wait(0.4)
+                task.wait(0.3)
                 continue
             end
 
@@ -2086,14 +2079,12 @@ runFarm = function()
             local root = char and char:FindFirstChild("HumanoidRootPart")
 
             if not root then
-                task.wait(0.5)
+                task.wait(0.4)
                 continue
             end
 
-            if root and currentFarmConfig then
+            if currentFarmConfig then
                 local d = root.Position - currentFarmConfig.pos
-
-                -- ใกล้ = เดินไปเก็บเอง | ไกล (รวมตกแมพ เพราะนับแกน Y ด้วย) = วาร์ปกลับจุดฟาร์ม
                 if d.Magnitude > currentFarmConfig.maxDist + TP_MARGIN then
                     directTP(currentFarmConfig.pos)
                     standIdle(IDLE_AFTER_TP)
@@ -2123,30 +2114,28 @@ runFarm = function()
             local result = walkToTriggerTarget(t)
             if not working then return end
 
-            -- ข้ามก้อนเฉพาะตอน "เดินไปไม่ถึง/เหยียบแล้วบอทไม่เริ่ม" เท่านั้น
             if result == "not_triggered" or result == "timeout" then
                 blacklisted[key] = true
                 task.wait(0.01)
                 continue
             end
 
-            -- บอทเกมเริ่มทำงานแล้ว: ปล่อยให้เกมทำเอง ไม่ยุ่ง
             if result == "bot_started" then
                 blacklisted = {}
                 local lastItemAcquiredTime = tick()
-                local lastItemCount = getItemCount(currentFarmConfig.folderName)
+                local folderName = currentFarmConfig.folderName
+                local lastItemCount = getItemCount(folderName)
 
                 while working and not isRestocking and not isSellingProcessActive do
                     local qteGui = pg:FindFirstChild("FarmQTEGui")
-                    local currentCount = getItemCount(currentFarmConfig.folderName)
+                    local c, m = getItemCount(folderName)
                     local hum = lp.Character and lp.Character:FindFirstChild("Humanoid")
 
-                    if currentCount > lastItemCount then
+                    if c > lastItemCount then
                         lastItemAcquiredTime = tick()
-                        lastItemCount = currentCount
+                        lastItemCount = c
                     end
 
-                    local c, m = getItemCount(currentFarmConfig.folderName)
                     if c >= m and m > 0 then break end
 
                     local isQteClosed = not (qteGui and qteGui.Enabled)
@@ -2169,22 +2158,36 @@ runFarm = function()
         end
     end
 
-    -- ตัวคุมลูปฟาร์ม: ถ้าลูปพังเพราะ error ให้เริ่มใหม่เอง
     loopThread = task.spawn(function()
         while working do
             local ok = pcall(farmLoop)
             if working and not ok then
                 isSellingProcessActive = false
-                pcall(function()
-                    Camera.CameraType = Enum.CameraType.Custom
-                    local h = lp.Character and lp.Character:FindFirstChild("Humanoid")
-                    if h then Camera.CameraSubject = h; h:Move(Vector3.zero, false) end
-                end)
+                pcall(restoreCamera)
                 task.wait(1)
             end
         end
     end)
 end
+
+-- เกิดใหม่หลังตาย: เริ่มฟาร์มต่อเอง (ถ้าสวิตช์ฟาร์มยังเปิด)
+bind(lp.CharacterAdded, function(char)
+    if IN_LOBBY then return end
+    task.spawn(function()
+        pcall(function()
+            char:WaitForChild("HumanoidRootPart", 15)
+            char:WaitForChild("Humanoid", 15)
+            NC.anchored = false
+            endNoclip()
+            task.wait(2)
+            if not gui.Parent then return end
+            if CFG["MainFarmToggle"] == true and not rejoining and not SAFE.hopping
+                and not isRestocking and not isSellingProcessActive then
+                runFarm()
+            end
+        end)
+    end)
+end)
 
 -- ═══ 10. มินิเกม RADAR QTE ═══
 local function getAngleFromCenter(center, point)
@@ -2222,28 +2225,21 @@ local function tapButtonTripleBurst(btn)
 end
 
 local isTappedS1, isTappedS2 = false, false
-
 local qteCache = {}
 
-local qteConn = RS.RenderStepped:Connect(function()
-    local qteGui = pg:FindFirstChild("FarmQTEGui")
-    if not qteGui then
-        isTappedS1, isTappedS2 = false, false
-        return
+local qteConn = bind(RS.RenderStepped, function()
+    local qteGui = qteCache.gui
+    if not (qteGui and qteGui.Parent) then
+        qteGui = pg:FindFirstChild("FarmQTEGui")
+        qteCache.gui = qteGui
     end
-    if not G.QTE_AUTO_ENABLED then
-        isTappedS1, isTappedS2 = false, false
-        return
-    end
-
-    if not qteGui.Enabled then
+    if not qteGui or not G.QTE_AUTO_ENABLED or not qteGui.Enabled then
         isTappedS1, isTappedS2 = false, false
         return
     end
 
     local qc = qteCache
-    if qc.gui ~= qteGui or not (qc.needle and qc.needle.Parent and qc.wheel and qc.wheel.Parent) then
-        qc.gui = qteGui
+    if not (qc.needle and qc.needle.Parent and qc.wheel and qc.wheel.Parent) then
         qc.needle = qteGui:FindFirstChild("NeedleLine", true) or qteGui:FindFirstChild("Keycap", true) or qteGui:FindFirstChild("NeedlePivot", true)
         qc.wheel = qteGui:FindFirstChild("WheelContainer", true) or qteGui:FindFirstChild("TargetArcContainer", true)
         qc.tap, qc.dots, qc.slices = nil, nil, nil
@@ -2290,14 +2286,12 @@ local qteConn = RS.RenderStepped:Connect(function()
     if d2G then
         -- เสร็จทั้ง 2 สเตจแล้ว
     elseif minDiff <= 5.5 then
-        if G.QTE_AUTO_ENABLED then
-            if currentStage == 1 and not isTappedS1 then
-                isTappedS1 = true
-                tapButtonTripleBurst(tapBtn)
-            elseif currentStage == 2 and not isTappedS2 then
-                isTappedS2 = true
-                tapButtonTripleBurst(tapBtn)
-            end
+        if currentStage == 1 and not isTappedS1 then
+            isTappedS1 = true
+            tapButtonTripleBurst(tapBtn)
+        elseif currentStage == 2 and not isTappedS2 then
+            isTappedS2 = true
+            tapButtonTripleBurst(tapBtn)
         end
     elseif minDiff > 8.0 then
         if currentStage == 1 then isTappedS1 = false end
@@ -2321,8 +2315,8 @@ local function optimizeInstance(v)
         v.Transparency = 1
     elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") then
         v.Enabled = false
-    elseif v:IsA("PostEffect") or v:IsA("Atmosphere") then
-        if v:IsA("PostEffect") then v.Enabled = false end
+    elseif v:IsA("PostEffect") then
+        v.Enabled = false
     end
 end
 
@@ -2367,12 +2361,11 @@ local function setFpsBoost(on)
     end
 end
 
--- ═══ 12.5 โหมดประหยัดเครื่อง (ปิดภาพ 3D ลดภาระ CPU/GPU ตอนเปิดข้ามคืน) ═══
 local function setRender3D(off)
     pcall(function() RS:Set3dRenderingEnabled(not off) end)
 end
 
--- ═══ 13. ย้ายเซิร์ฟเมื่อคนเยอะ (ปิดเป็นค่าเริ่มต้น) — ★ ไม่ทำงานในล็อบบี้ ═══
+-- ═══ 13. ย้ายเซิร์ฟเมื่อคนเยอะ ═══
 local crowdHopOn = false
 local crowdLimit = 2
 local HOP_MARK = FOLDER .. "/lasthop.txt"
@@ -2400,7 +2393,6 @@ local function doCrowdHop()
     pcall(function() Toast("คนเยอะ กำลังย้ายเซิร์ฟ...") end)
     local wasFarming = working
     pcall(function() if setteleportsetting then setteleportsetting(false) end end)
-    -- สั่งวาร์ปทันที (ไม่รอหยุดฟาร์ม/ยืนนิ่ง) แล้วค่อยหยุดฟาร์ม ลองซ้ำถ้าล้มเหลว
     goLobby()
     pcall(stopFarm)
     for _ = 1, 6 do
@@ -2416,14 +2408,13 @@ if not IN_LOBBY then
     task.spawn(function()
         task.wait(2)
         while gui.Parent do
-            task.wait(0.5)
-            -- ครอบ pcall ทั้งรอบ: error ครั้งเดียวต้องไม่ทำให้ลูปตาย
+            task.wait(1.0)
             pcall(function()
                 local n = #Players:GetPlayers()
                 if not crowdHopOn then crowdWhy = "สวิตช์ปิดอยู่"
-                elseif rejoining or SAFE.hopping then crowdWhy = "กำลังย้าย/รีจอยน์อยู่"
+                elseif rejoining or SAFE.hopping then crowdWhy = "กำลังย้ายเซิร์ฟ/เข้าเกมใหม่อยู่"
                 elseif n < crowdLimit then crowdWhy = string.format("คนในเซิร์ฟ %d < %d (ยังไม่ถึงเกณฑ์)", n, crowdLimit)
-                elseif recentlyHopped() or tick() - lastCrowdHopAt <= 30 then crowdWhy = "คูลดาวน์ 30 วิหลังย้ายล่าสุด"
+                elseif recentlyHopped() or tick() - lastCrowdHopAt <= 30 then crowdWhy = "รอ 30 วินาทีหลังย้ายล่าสุด"
                 else
                     crowdWhy = string.format("คนในเซิร์ฟ %d ≥ %d → กำลังย้าย", n, crowdLimit)
                     doCrowdHop()
@@ -2435,7 +2426,7 @@ else
     crowdWhy = "อยู่ล็อบบี้ (ปิดระบบนี้)"
 end
 
--- ═══ 13.1 เจอคนเดิมตอนฟาม → ย้ายเซิร์ฟหนีทันที ═══
+-- ═══ 13.1 เจอคนเดิมตอนฟาร์ม → ย้ายเซิร์ฟ ═══
 local function hopAwayNow(reason)
     if SAFE.hopping or rejoining or IN_LOBBY or not gui.Parent then return end
     SAFE.hopping = true
@@ -2478,13 +2469,12 @@ if not IN_LOBBY then
     end)
 end
 
--- ═══ 13.2 หนีรีสตาร์ทเซิร์ฟอัตโนมัติ — ★ ไม่ทำงานในล็อบบี้ ═══
+-- ═══ 13.2 หนีรีสตาร์ทเซิร์ฟอัตโนมัติ ═══
 local lastRestartTrigger = -1000
 if not IN_LOBBY then
     task.spawn(function()
         while gui.Parent do
             task.wait(1)
-            -- ครอบ pcall ทั้งรอบ: error ครั้งเดียวต้องไม่ทำให้ลูปตาย
             pcall(function()
                 if isAutoRejoinEnabled and not rejoining then
                     local untilNext = restartTimes()
@@ -2495,7 +2485,6 @@ if not IN_LOBBY then
                         local wasFarming = working
                         pcall(stopFarm)
                         pcall(function() if setteleportsetting then setteleportsetting(false) end end)
-                        -- ไม่รอ standIdle นาน เพราะเหลือเวลาไม่มาก: วาร์ปทันที แล้วลองซ้ำจนกว่าจะติด
                         for _ = 1, 8 do
                             if not gui.Parent then break end
                             goLobby()
@@ -2513,7 +2502,7 @@ end
 -- ═══ 13.5 ANTI-AFK ═══
 local antiAfkOn = saved("AntiAfkToggle", true) == true
 
-lp.Idled:Connect(function()
+bind(lp.Idled, function()
     if not antiAfkOn then return end
     pcall(function()
         VirtualUser:CaptureController()
@@ -2547,30 +2536,24 @@ task.spawn(function()
                     busySince = nil
                     isRestocking, isSellingProcessActive = false, false
                     endNoclip()
-                    Camera.CameraType = Enum.CameraType.Custom
-                    local h = lp.Character and lp.Character:FindFirstChild("Humanoid")
-                    if h then Camera.CameraSubject = h; h:Move(Vector3.zero, false) end
+                    restoreCamera()
                     ensureAllMenusClosed()
                     if CFG["MainFarmToggle"] == true and not working and not rejoining and not IN_LOBBY then runFarm() end
                 end
             else
                 busySince = nil
             end
-            -- ลูปฟาร์มตายเงียบๆ ทั้งที่ยังเปิดฟาร์มอยู่ → เริ่มใหม่
             if working and loopThread and coroutine.status(loopThread) == "dead"
                 and not rejoining and not isRestocking and not isSellingProcessActive then
                 runFarm()
             end
-            -- ตัวละครถูกล็อก (Anchored) ค้างจากการวาร์ปที่โดนยกเลิกกลางทาง → ปลดให้ + คืน noclip
             if NC.anchored and tick() > NC.busyUntil + 2 then
                 NC.anchored = false
                 local r = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
                 if r then r.Anchored = false end
                 endNoclip()
             end
-            -- คง noclip ไว้ตอนขาย แต่ถ้าไม่ได้อยู่ในขั้นตอนขายแล้วให้คืนการชน
             if NC.hold and not isSellingProcessActive then endNoclip() end
-            -- noclip ค้างเกินเวลา (เธรดวาร์ปถูกยกเลิก) → คืนการชน
             if next(ncChanged) ~= nil and tick() > NC.tpUntil + 1 and not NC.farm and not NC.hold then
                 endNoclip()
             end
@@ -2581,20 +2564,31 @@ end)
 --==================================================================
 -- 📦 สร้างหน้าเมนู (3 หน้า)
 --==================================================================
-local pMain = addTab("Main")
-local pTp   = addTab("Teleport")
-local pSet  = addTab("Settings")
+-- (คีย์ภายในยังเป็น Main/Teleport/Settings เหมือนเดิม ส่วนชื่อที่แสดงเป็นภาษาไทย)
+local pMain = addTab("Main", "หลัก")
+local pTp   = addTab("Teleport", "วาร์ป")
+local pSet  = addTab("Settings", "ตั้งค่า")
 
--- ───── Main ─────
-Label(pMain, "AUTO FARM")
+-- แปลงค่าที่เซฟไว้จากชื่อเก่า → ชื่อใหม่ (กันเลือกจุดฟาร์ม/วาร์ปเด้งกลับ)
+if type(CFG.MainFarmDropdown) == "string" and not CFG.MainFarmDropdown:find("^ฟาร์ม") then
+    CFG.MainFarmDropdown = "ฟาร์ม" .. CFG.MainFarmDropdown
+end
+do
+    local old = { ["กล้วย"] = "ฟาร์มกล้วย", ["ดอกไม้"] = "ฟาร์มดอกไม้", ["ร้านค้า (การาจกลาง)"] = "ร้านค้าการาจกลาง" }
+    if old[CFG.TeleportSpotDropdown] then CFG.TeleportSpotDropdown = old[CFG.TeleportSpotDropdown] end
+end
+
+-- ───── หลัก ─────
+Label(pMain, "ฟาร์มอัตโนมัติ")
 Toggle(pMain, "ระบบฟาร์ม", "MainFarmToggle", false, function(v)
     if v then runFarm() else stopFarm() end
 end)
-Dropdown(pMain, "จุดฟาร์ม", farmOptions, "MainFarmDropdown", "หญ้า", function(opt)
+Dropdown(pMain, "จุดฟาร์ม", farmOptions, "MainFarmDropdown", "ฟาร์มหญ้า", function(opt)
     if FARM_DATA[opt] and currentFarmKey ~= opt then
         currentFarmKey = opt
         currentFarmConfig = FARM_DATA[opt]
         blacklisted = {}
+        farmFolderCache = nil
         if working then
             task.spawn(function()
                 stopFarm()
@@ -2605,18 +2599,20 @@ Dropdown(pMain, "จุดฟาร์ม", farmOptions, "MainFarmDropdown", "�
         end
     end
 end)
-Toggle(pMain, "มินิเกม QTE", "MainQteToggle", true, function(v) G.QTE_AUTO_ENABLED = v end)
-Toggle(pMain, "ขายของเต็ม", "MainAutoSellToggle", true, function(v) autoSellWhenFull = v end)
+Toggle(pMain, "มินิเกมอัตโนมัติ (QTE)", "MainQteToggle", true, function(v) G.QTE_AUTO_ENABLED = v end)
+Toggle(pMain, "ขายของอัตโนมัติเมื่อกระเป๋าเต็ม", "MainAutoSellToggle", true, function(v) autoSellWhenFull = v end)
 
 Label(pMain, "ย้ายเซิร์ฟ")
 Toggle(pMain, "ย้ายเซิร์ฟเมื่อคนเยอะ", "CrowdHopToggle", false, function(v) crowdHopOn = v end)
-Slider(pMain, "ย้ายเมื่อมีคนถึง", 1, 50, 1, " คน", "CrowdHopLimitSlider2", 2, function(v) crowdLimit = v end)
-local setCrowdStat = Status(pMain, "สถานะย้ายเซิร์ฟ: รอเช็ค...")
+Slider(pMain, "ย้ายเมื่อผู้เล่นถึง", 1, 50, 1, " คน", "CrowdHopLimitSlider2", 2, function(v) crowdLimit = v end)
+local setCrowdStat = Status(pMain, "สถานะย้ายเซิร์ฟ: รอเช็ค...", 52)
 task.spawn(function()
     while gui.Parent do
-        pcall(function()
-            setCrowdStat(string.format("สถานะย้ายเซิร์ฟ: %s\nผู้เล่นในเซิร์ฟ: %d คน", crowdWhy, #Players:GetPlayers()))
-        end)
+        if isOpen then
+            pcall(function()
+                setCrowdStat(string.format("สถานะย้ายเซิร์ฟ: %s\nผู้เล่นในเซิร์ฟ: %d คน", crowdWhy, #Players:GetPlayers()))
+            end)
+        end
         task.wait(1)
     end
 end)
@@ -2628,9 +2624,9 @@ Button(pMain, "ทดสอบย้ายเซิร์ฟตอนนี้",
     if not SAFE.hopping then task.spawn(doCrowdHop) end
 end)
 
-Label(pMain, "AUTO FOOD")
-Toggle(pMain, "กิน/เติมเสบียง", "AutoConsumeMasterToggle", true, function(v) CONSUME_SETTINGS.Enabled = v end)
-local setStat = Status(pMain, "กำลังอ่านค่าสถานะ...")
+Label(pMain, "กิน/เติมเสบียง")
+Toggle(pMain, "กิน/เติมเสบียงอัตโนมัติ", "AutoConsumeMasterToggle", true, function(v) CONSUME_SETTINGS.Enabled = v end)
+local setStat = Status(pMain, "กำลังอ่านค่าสถานะ...", 52)
 Slider(pMain, "เกณฑ์เริ่มกิน", 10, 95, 5, "%", "ConsumeThresholdSlider", 80, function(v) CONSUME_SETTINGS.Threshold = v end)
 Slider(pMain, "หน่วงเวลากิน", 0.5, 3.0, 0.1, "s", "ConsumeCooldownSlider", 1.0, function(v) CONSUME_SETTINGS.Cooldown = v end)
 
@@ -2645,8 +2641,8 @@ task.spawn(function()
     end
 end)
 
--- ───── Teleport ─────
-Label(pTp, "TELEPORT")
+-- ───── วาร์ป ─────
+Label(pTp, "วาร์ป")
 Dropdown(pTp, "เลือกจุดวาร์ป", tpOptions, "TeleportSpotDropdown", tpOptions[1], function(opt)
     if TELEPORT_LOCATIONS[opt] then currentTpKey = opt end
 end)
@@ -2662,35 +2658,40 @@ Button(pTp, "วาร์ปไปยังจุดที่เลือก", f
     end
 end)
 
--- ───── Settings ─────
-Label(pSet, "SYSTEM")
-Toggle(pSet, "FPS Boost (ลดกราฟิกทั้งแมพ)", "FpsBoostToggle", false, setFpsBoost)
-Toggle(pSet, "ป้องกันการหลุด (Auto Rejoin)", "AutoRejoinToggle", true, function(v)
+-- ───── ตั้งค่า ─────
+Label(pSet, "ระบบ")
+Toggle(pSet, "เพิ่ม FPS (ลดกราฟิกทั้งแผนที่)", "FpsBoostToggle", false, setFpsBoost)
+Toggle(pSet, "ป้องกันการหลุด (เข้าเกมใหม่อัตโนมัติ)", "AutoRejoinToggle", true, function(v)
     isAutoRejoinEnabled = v
 end)
 Toggle(pSet, "โหมดประหยัดเครื่อง (ปิดภาพ 3D)", "Render3DOffToggle", false, setRender3D)
-Toggle(pSet, "Anti-AFK (กันหลุดเพราะ AFK)", "AntiAfkToggle", true, function(v)
+Toggle(pSet, "กันหลุดเมื่อไม่ได้ขยับ", "AntiAfkToggle", true, function(v)
     antiAfkOn = v
 end)
-Toggle(pSet, "Auto Execute (รันเองหลังวาร์ป)", "AutoExecToggle", true, setupAutoExec)
+Toggle(pSet, "รันสคริปต์เองหลังวาร์ป", "AutoExecToggle", true, setupAutoExec)
 
-Label(pSet, "UI")
-Button(pSet, "ปิด UI", function() setOpen(false) end)
-Button(pSet, "ลบ UI ทิ้ง", function()
-    stopFarm()
+Label(pSet, "หน้าต่างเมนู")
+Button(pSet, "ปิดเมนู", function() setOpen(false) end)
+Button(pSet, "ลบเมนูทิ้ง", function()
+    gui:Destroy()
+end, true)
+
+-- เคลียร์ทุกอย่างตอน UI ถูกลบ (ทั้งจากปุ่มและจากการรันสคริปต์ซ้ำ)
+gui.Destroying:Connect(function()
+    pcall(stopFarm)
     CONSUME_SETTINGS.Enabled = false
     isAutoRejoinEnabled = false
     antiAfkOn = false
     crowdHopOn = false
-    setFpsBoost(false)
-    setRender3D(false)
-    endNoclip()
-    qteConn:Disconnect()
-    gui:Destroy()
-end, true)
+    pcall(setFpsBoost, false)
+    pcall(setRender3D, false)
+    pcall(endNoclip)
+    doSave()
+    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    conns = {}
+end)
 
 --========== โหลดค่าที่เซฟไว้ แล้วเริ่มทำงาน ==========
--- 1) slider/dropdown ก่อน (ค่าตั้ง) 2) รอตัวละครโหลด 3) ค่อยเปิดสวิตช์ที่เซฟไว้ (ฟาร์มจะเริ่มเองหลังเข้าเซิร์ฟ)
 for _, f in ipairs(inits) do task.spawn(f) end
 task.wait(0.1)
 task.spawn(function()
@@ -2700,7 +2701,7 @@ task.spawn(function()
         if c and c:FindFirstChild("HumanoidRootPart") and c:FindFirstChildOfClass("Humanoid") then break end
         task.wait(0.2)
     end
-    task.wait(1.0)   -- ให้ UI/กระเป๋าของเกมโหลดก่อน
+    task.wait(0.8)
     if not gui.Parent then return end
     for _, f in ipairs(tinits) do task.spawn(f) end
 end)
